@@ -129,7 +129,7 @@ static ngx_int_t ngx_http_sticky_handler(ngx_http_request_t *r)
 static char *ngx_http_sticky_set_sticky(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
 	ngx_uint_t i;
-	ngx_str_t name, domain, path;
+	ngx_str_t name, domain, path, tmp;
 	time_t expires;
 
 	for (i=1; i<cf->args->nelts; i++) {
@@ -167,13 +167,13 @@ static char *ngx_http_sticky_set_sticky(ngx_conf_t *cf, ngx_command_t *cmd, void
 		}
 
 		if ((u_char *)ngx_strstr(value[i].data, "expires=") == value[i].data) {
-			size_t len;
 			if (value[i].len <= sizeof("expires=") - 1) {
 				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] a value must be provided to \"expires=\"");
 				return NGX_CONF_ERROR;
 			}
-			len =  value[i].len - ngx_strlen("expires=");
-			expires = ngx_atotm((u_char *)(value[i].data + sizeof("expires=") - 1), len);
+			tmp.len =  value[i].len - ngx_strlen("expires=");
+			tmp.data = (u_char *)(value[i].data + sizeof("expires=") - 1);
+			expires = ngx_parse_time(&tmp, 1);
 			ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] %V => %s => %d", &value[i], (u_char *)(value[i].data + sizeof("expires=") - 1), expires);
 			if (expires == NGX_ERROR) {
 				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] invalid value for \"expires=\"");
