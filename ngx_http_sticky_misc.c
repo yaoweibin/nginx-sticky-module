@@ -4,8 +4,10 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 {
 	u_char  *cookie, *p;
 	size_t  len;
-	ngx_table_elt_t            *set_cookie;
+	ngx_table_elt_t *set_cookie, *elt;
 	ngx_str_t remove;
+	ngx_list_part_t *part;
+	ngx_uint_t i;
 
 	if (value == NULL) {
 		remove.len = sizeof("_remove_") - 1;
@@ -56,16 +58,71 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 		p = ngx_copy(p, path->data, path->len);
 	}
 
+	part = &r->headers_out.headers.part;
+	elt = (ngx_table_elt_t *)part->elts;
+	set_cookie = NULL;
+
+	for (i=0 ;; i++) {
+		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky/misc_set_cookie] part=0x%p nelts=%d", part, part->nelts);
+		if (part->nelts > 1 || i >= part->nelts) {
+			if (part->next == NULL) {
+				break;
+			}
+			part = part->next;
+			elt = (ngx_table_elt_t *)part->elts;
+			i = 0;
+		}
+		// ... //
+		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky/misc_set_cookie] headers: %V=%V nelts=%d", &elt->key, &elt->value, part->nelts);
+		if (ngx_strncmp(elt->value.data, name->data, name->len) == 0) {
+			set_cookie = elt;
+			break;
+		}
+	}
+
+	if (set_cookie != NULL) { // found a Set-Cookie header with the same name: replace it
+		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky/misc_set_cookie] Set-cookie %V found. Replacing it.", name);
+		set_cookie->value.len = p - cookie;
+		set_cookie->value.data = cookie;
+		return NGX_OK;
+	}
+
+	ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky/misc_set_cookie] Set-cookie %V not found. Adding it.", name);
 	set_cookie = ngx_list_push(&r->headers_out.headers);
 	if (set_cookie == NULL) {
 		return NGX_ERROR;
 	}
-
 	set_cookie->hash = 1;
 	set_cookie->key.len = sizeof("Set-Cookie") - 1;
 	set_cookie->key.data = (u_char *) "Set-Cookie";
 	set_cookie->value.len = p - cookie;
 	set_cookie->value.data = cookie;
+
+	return NGX_OK;
+}
+
+ngx_int_t ngx_http_sticky_misc_remove_set_cookies(ngx_http_request_t *r, ngx_str_t *cookie_name)
+{
+	ngx_list_part_t *part;
+	ngx_uint_t i;
+	ngx_table_elt_t *elt;
+
+	part = &r->headers_out.headers.part;
+	elt = (ngx_table_elt_t *)part->elts;
+
+	for (i=0 ;; i++) {
+		if (part->nelts > 1 || i >= part->nelts) {
+			if (part->next == NULL) {
+				break;
+			}
+			part = part->next;
+			elt = (ngx_table_elt_t *)part->elts;
+			i = 0;
+		}
+		if (ngx_strncmp(elt->key.data, cookie_name->data, cookie_name->len) == 0) {
+			part->nelts = 0;
+		}
+	}
 
 	return NGX_OK;
 }
@@ -163,7 +220,8 @@ ngx_int_t ngx_http_sticky_misc_generate_uid(ngx_http_request_t *r, uint32_t star
 	return NGX_OK;
 }
 
-ngx_int_t ngx_http_sticky_misc_redirect(ngx_http_request_t *r, ngx_str_t *url) {
+ngx_int_t ngx_http_sticky_misc_redirect(ngx_http_request_t *r, ngx_str_t *url)
+{
 	ngx_table_elt_t *location;
 
 	location = ngx_list_push(&r->headers_out.headers);
@@ -208,7 +266,8 @@ ngx_int_t ngx_http_sticky_misc_get_var(ngx_http_request_t *r, u_char *name, ngx_
 	return NGX_OK;
 }
 
-ngx_int_t ngx_http_sticky_misc_forge_url(ngx_http_request_t *r, ngx_str_t *url, ngx_int_t base64) {
+ngx_int_t ngx_http_sticky_misc_forge_url(ngx_http_request_t *r, ngx_str_t *url, ngx_int_t base64)
+{
 	ngx_str_t scheme, host;
 
 	ngx_http_sticky_misc_get_var(r, (u_char *)"scheme", &scheme);
@@ -238,7 +297,8 @@ ngx_int_t ngx_http_sticky_misc_forge_url(ngx_http_request_t *r, ngx_str_t *url, 
 	return NGX_OK;
 }
 
-ngx_int_t ngx_http_sticky_misc_decode_base64(ngx_http_request_t *r, ngx_str_t *in, ngx_str_t *out) {
+ngx_int_t ngx_http_sticky_misc_decode_base64(ngx_http_request_t *r, ngx_str_t *in, ngx_str_t *out)
+{
 	out->len = ngx_base64_decoded_length(in->len);
 	out->data = ngx_pnalloc(r->pool, out->len + 1);
 	if (out->data == NULL) {
@@ -249,5 +309,41 @@ ngx_int_t ngx_http_sticky_misc_decode_base64(ngx_http_request_t *r, ngx_str_t *i
 		return NGX_ERROR;
 	}
 
+	return NGX_OK;
+}
+
+ngx_int_t ngx_http_sticky_misc_split_str(ngx_str_t *in, u_char *start, ngx_str_t *out) 
+{
+	size_t start_len = ngx_strlen(start);
+
+	if (in->len <= start_len) {
+		return NGX_ERROR;
+	}
+
+	if ((u_char *)ngx_strstr(in->data, start) != in->data) {
+		return NGX_ERROR;
+	}
+
+	out->len  = in->len - start_len;
+	out->data = (u_char *)(in->data + start_len);
+	return NGX_OK;
+}
+
+ngx_int_t ngx_http_sticky_misc_md5(ngx_pool_t *pool, void *in, size_t len, ngx_str_t *digest)
+{
+	ngx_md5_t md5;
+	u_char hash[MD5_DIGEST_LENGTH + 1];
+
+	digest->data = ngx_pcalloc(pool, (MD5_DIGEST_LENGTH * 2) + 1);
+	if (digest->data == NULL) {
+		return NGX_ERROR;
+	}
+
+	digest->len = MD5_DIGEST_LENGTH * 2;
+	ngx_md5_init(&md5);
+	ngx_md5_update(&md5, in, len);
+	ngx_md5_final(hash, &md5);
+
+	ngx_hex_dump(digest->data, hash, MD5_DIGEST_LENGTH);
 	return NGX_OK;
 }

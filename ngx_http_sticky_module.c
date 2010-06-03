@@ -1,31 +1,29 @@
-
-/*
- * Copyright (C) Igor Sysoev
- */
-
 #include "ngx_http_sticky_misc.h"
 
 typedef struct {
-	ngx_flag_t enable;
-	ngx_str_t  cookie_name;
-	ngx_str_t  cookie_domain;
-	ngx_str_t  cookie_path;
-	time_t     cookie_expires;
-} ngx_http_sticky_loc_conf_t;
+	/* the round robin data must be first */
+	ngx_http_upstream_rr_peer_data_t   rrp;
+	ngx_uint_t                         hash;
+	u_char                             addr[3];
+	u_char                             tries;
+	ngx_event_get_peer_pt              get_rr_peer;
+	ngx_http_request_t                 *r;
+} ngx_http_sticky_peer_data_t;
 
 
-static char      *ngx_http_sticky_set_sticky      (ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static ngx_int_t  ngx_http_sticky_init            (ngx_conf_t *cf);
-static ngx_int_t  ngx_http_sticky_init_worker     (ngx_cycle_t *cycle);
+static ngx_int_t  ngx_http_sticky_ups_init_peer(ngx_http_request_t *r, ngx_http_upstream_srv_conf_t *us);
+static ngx_int_t  ngx_http_sticky_ups_get(ngx_peer_connection_t *pc, void *data);
+static char      *ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static void       ngx_http_upstream_sticky_up_free_peer(ngx_peer_connection_t *pc, void *data, ngx_uint_t state);
 
-static ngx_int_t ngx_http_sticky_handler       (ngx_http_request_t *r);
+static ngx_uint_t static_index = 0;
 
 static ngx_command_t  ngx_http_sticky_commands[] = {
 
 	{ ngx_string("sticky"),
-		NGX_HTTP_UPS_CONF|NGX_CONF_ANY,
-		ngx_http_sticky_set_sticky,
-		NGX_HTTP_LOC_CONF_OFFSET,
+		NGX_HTTP_UPS_CONF|NGX_CONF_NOARGS,
+		ngx_http_sticky_set,
+		0,
 		0,
 		NULL },
 
@@ -34,195 +32,235 @@ static ngx_command_t  ngx_http_sticky_commands[] = {
 
 
 static ngx_http_module_t  ngx_http_sticky_module_ctx = {
-	NULL,                            /* preconfiguration */
-	ngx_http_sticky_init,            /* postconfiguration */
+	NULL,                                  /* preconfiguration */
+	NULL,                                  /* postconfiguration */
 
-	NULL,                            /* create main configuration */
-	NULL,                            /* init main configuration */
+	NULL,                                  /* create main configuration */
+	NULL,                                  /* init main configuration */
 
-	NULL,                            /* create server configuration */
-	NULL,                            /* merge server configuration */
+	NULL,                                  /* create server configuration */
+	NULL,                                  /* merge server configuration */
 
-	NULL,                            /* create location configuration */
-	NULL,                            /* merge location configuration */
+	NULL,                                  /* create location configuration */
+	NULL                                   /* merge location configuration */
 };
 
 
 ngx_module_t  ngx_http_sticky_module = {
 	NGX_MODULE_V1,
 	&ngx_http_sticky_module_ctx, /* module context */
-	ngx_http_sticky_commands,   /* module directives */
-	NGX_HTTP_MODULE,               /* module type */
-	NULL,                          /* init master */
-	NULL,                          /* init module */
-	NULL,                          /* init process */
-	ngx_http_sticky_init_worker,   /* init thread */
-	NULL,                          /* exit thread */
-	NULL,                          /* exit process */
-	NULL,                          /* exit master */
+	ngx_http_sticky_commands,    /* module directives */
+	NGX_HTTP_MODULE,                       /* module type */
+	NULL,                                  /* init master */
+	NULL,                                  /* init module */
+	NULL,                                  /* init process */
+	NULL,                                  /* init thread */
+	NULL,                                  /* exit thread */
+	NULL,                                  /* exit process */
+	NULL,                                  /* exit master */
 	NGX_MODULE_V1_PADDING
 };
 
-static ngx_http_output_header_filter_pt  ngx_http_next_header_filter;
 
-static ngx_int_t ngx_http_sticky_handler(ngx_http_request_t *r)
+ngx_int_t ngx_http_sticky_ups_init(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *us)
 {
-/*
-	ngx_http_sticky_loc_conf_t  *conf;
-	ngx_table_elt_t  **h;
-	ngx_str_t cookie_expires, cookie_hash, cookie_uid, hash;
-	time_t expires;
-
-	h = r->headers_in.cookies.elts;
-
-	conf = ngx_http_get_module_loc_conf(r, ngx_http_sticky_module);
-
-	if (!conf->enable_filter) return NGX_DECLINED;
-
-	if (ngx_http_parse_multi_header_lines(&r->headers_in.cookies, &conf->cookie_name_expires, &cookie_expires) == NGX_DECLINED) {
-		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky] client did not send cookie \"%V\"", &conf->cookie_name_expires);
-		return ngx_http_sticky_redirect_to_server(r, conf);
-	}
-	if (ngx_http_parse_multi_header_lines(&r->headers_in.cookies, &conf->cookie_name_hash, &cookie_hash) == NGX_DECLINED) {
-		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky] client did not send cookie \"%V\"", &conf->cookie_name_hash);
-		return ngx_http_sticky_redirect_to_server(r, conf);
-	}
-	if (ngx_http_parse_multi_header_lines(&r->headers_in.cookies, &conf->cookie_name_uid, &cookie_uid) == NGX_DECLINED) {
-		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky] client did not send cookie \"%V\"", &conf->cookie_name_uid);
-		return ngx_http_sticky_redirect_to_server(r, conf);
-	}
-
-	if (cookie_uid.len != NGX_XTOKEN_HASH_LENGTH) {
-		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky] cookie \"%V\" has a wrong size (%d)", &conf->cookie_name_uid, NGX_XTOKEN_HASH_LENGTH);
-		return ngx_http_sticky_redirect_to_server(r, conf);
-	}
-
-	expires = ngx_atotm(cookie_expires.data, cookie_expires.len);
-	if (expires == NGX_ERROR) {
-		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky] cookie \"%V\" has a wrong format (/^\\d+$)", &conf->cookie_name_expires);
-		return ngx_http_sticky_redirect_to_server(r, conf);
-	}
-
-	if (expires < ngx_time()) {
-		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky] cookie \"%V\" has expired", &conf->cookie_name_expires);
-		return ngx_http_sticky_redirect_to_server(r, conf);
-	}
-
-	if (cookie_hash.len != NGX_XTOKEN_HASH_LENGTH) {
-		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky] cookie \"%V\" has a wrong size (%d)", &conf->cookie_name_hash, NGX_XTOKEN_HASH_LENGTH);
-		return ngx_http_sticky_redirect_to_server(r, conf);
-	}
-
-	if (ngx_http_sticky_make_hash(r, conf, &cookie_expires, &cookie_uid, &hash) != NGX_OK) {
+	if (ngx_http_upstream_init_round_robin(cf, us) != NGX_OK) {
 		return NGX_ERROR;
 	}
 
-	if (ngx_strncmp(hash.data, cookie_hash.data, hash.len) != 0) {
-		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky] cookie \"%V\" is a wrong hash", &conf->cookie_name_hash);
-		return ngx_http_sticky_redirect_to_server(r, conf);
-	}
-*/
-	/* keep going - access is allowed */
-	return NGX_DECLINED;
+	us->peer.init = ngx_http_sticky_ups_init_peer;
+
+	return NGX_OK;
 }
 
-static char *ngx_http_sticky_set_sticky(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+
+static ngx_int_t ngx_http_sticky_ups_init_peer(ngx_http_request_t *r, ngx_http_upstream_srv_conf_t *us)
 {
-	ngx_uint_t i;
-	ngx_str_t name, domain, path, tmp;
-	time_t expires;
+	u_char                                 *p;
+	struct sockaddr_in                     *sin;
+	ngx_http_sticky_peer_data_t  *iphp;
+	ngx_str_t cookie_name = ngx_string("route");
+	ngx_str_t route;
 
-	for (i=1; i<cf->args->nelts; i++) {
-		ngx_str_t *value = cf->args->elts;
-		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] parsing \"%V\"", &value[i]);
+	ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky/ups_init_peer] enter");
 
-		if ((u_char *)ngx_strstr(value[i].data, "name=") == value[i].data) {
-			if (value[i].len <= sizeof("name=") - 1) {
-				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] a value must be provided to \"name=\"");
-				return NGX_CONF_ERROR;
-			}
-			name.len = value[i].len - ngx_strlen("name=");
-			name.data = (u_char *)(value[i].data + sizeof("name=") - 1);
-			ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] name=%V", &name);
+	iphp = ngx_palloc(r->pool, sizeof(ngx_http_sticky_peer_data_t));
+	if (iphp == NULL) {
+		return NGX_ERROR;
+	}
+
+	if (ngx_http_parse_multi_header_lines(&r->headers_in.cookies, &cookie_name, &route) != NGX_DECLINED) {
+		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky/ups_init_peer] got cookie route=%V", &route);			
+	}
+
+	r->upstream->peer.data = &iphp->rrp;
+
+	if (ngx_http_upstream_init_round_robin_peer(r, us) != NGX_OK) {
+		return NGX_ERROR;
+	}
+
+	r->upstream->peer.get = ngx_http_sticky_ups_get;
+	r->upstream->peer.free = ngx_http_upstream_sticky_up_free_peer;
+
+	/* AF_INET only */
+
+	if (r->connection->sockaddr->sa_family == AF_INET) {
+
+		sin = (struct sockaddr_in *) r->connection->sockaddr;
+		p = (u_char *) &sin->sin_addr.s_addr;
+		iphp->addr[0] = p[0];
+		iphp->addr[1] = p[1];
+		iphp->addr[2] = p[2];
+
+	} else {
+		iphp->addr[0] = 0;
+		iphp->addr[1] = 0;
+		iphp->addr[2] = 0;
+	}
+
+	iphp->hash = 89;
+	iphp->tries = 0;
+	iphp->get_rr_peer = ngx_http_upstream_get_round_robin_peer;
+	iphp->r = r;
+
+	return NGX_OK;
+}
+
+
+static ngx_int_t ngx_http_sticky_ups_get(ngx_peer_connection_t *pc, void *data)
+{
+	ngx_http_sticky_peer_data_t  *iphp = data;
+
+	time_t                        now;
+	uintptr_t                     m;
+	ngx_uint_t                    i, n, p, hash, index;
+	ngx_http_upstream_rr_peer_t  *peer;
+
+	ngx_log_error(NGX_LOG_ERR, pc->log, 0, "[sticky/ups_get] enter (tries=%d)", pc->tries);
+	ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+			"get ip hash peer, try: %ui", pc->tries);
+
+	/* TODO: cached */
+
+	if (iphp->tries > 20 || iphp->rrp.peers->single) {
+		return iphp->get_rr_peer(pc, &iphp->rrp);
+	}
+
+	now = ngx_time();
+
+	pc->cached = 0;
+	pc->connection = NULL;
+
+	hash = iphp->hash;
+
+	index = static_index++;
+	if (static_index >= iphp->rrp.peers->number) {
+		static_index = 0;
+	}
+
+	for ( ;; ) {
+
+		for (i = 0; i < 3; i++) {
+			hash = (hash * 113 + iphp->addr[i]) % 6271;
 		}
 
-		if ((u_char *)ngx_strstr(value[i].data, "domain=") == value[i].data) {
-			if (value[i].len <= ngx_strlen("domain=")) {
-				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] a value must be provided to \"domain=\"");
-				return NGX_CONF_ERROR;
+		p = hash % iphp->rrp.peers->number;
+		p = index;
+
+		n = p / (8 * sizeof(uintptr_t));
+		m = (uintptr_t) 1 << p % (8 * sizeof(uintptr_t));
+
+		if (!(iphp->rrp.tried[n] & m)) {
+
+			ngx_log_debug2(NGX_LOG_DEBUG_HTTP, pc->log, 0,
+					"get ip hash peer, hash: %ui %04XA", p, m);
+
+			peer = &iphp->rrp.peers->peer[p];
+
+			/* ngx_lock_mutex(iphp->rrp.peers->mutex); */
+
+			if (!peer->down) {
+
+				if (peer->max_fails == 0 || peer->fails < peer->max_fails) {
+					break;
+				}
+
+				if (now - peer->accessed > peer->fail_timeout) {
+					peer->fails = 0;
+					break;
+				}
 			}
-			domain.len = value[i].len - ngx_strlen("domain=");
-			domain.data = (u_char *)(value[i].data + sizeof("domain=") - 1);
-			ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] domain=%V", &domain);
+
+			iphp->rrp.tried[n] |= m;
+
+			/* ngx_unlock_mutex(iphp->rrp.peers->mutex); */
+
+			pc->tries--;
 		}
 
-		if ((u_char *)ngx_strstr(value[i].data, "path=") == value[i].data) {
-			if (value[i].len <= ngx_strlen("path=")) {
-				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] a value must be provided to \"path=\"");
-				return NGX_CONF_ERROR;
-			}
-			path.len = value[i].len - sizeof("path=") - 1;
-			path.data = (u_char *)(value[i].data + sizeof("path=") - 1);
-			ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] path=%V", &path);
-		}
-
-		if ((u_char *)ngx_strstr(value[i].data, "expires=") == value[i].data) {
-			if (value[i].len <= sizeof("expires=") - 1) {
-				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] a value must be provided to \"expires=\"");
-				return NGX_CONF_ERROR;
-			}
-			tmp.len =  value[i].len - ngx_strlen("expires=");
-			tmp.data = (u_char *)(value[i].data + sizeof("expires=") - 1);
-			expires = ngx_parse_time(&tmp, 1);
-			ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] %V => %s => %d", &value[i], (u_char *)(value[i].data + sizeof("expires=") - 1), expires);
-			if (expires == NGX_ERROR) {
-				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] invalid value for \"expires=\"");
-				return NGX_CONF_ERROR;
-			}
+		if (++iphp->tries >= 20) {
+			return iphp->get_rr_peer(pc, &iphp->rrp);
 		}
 	}
-/*
-	ngx_http_sticky_loc_conf_t *c;
 
-	c = ngx_http_conf_get_module_loc_conf(cf, ngx_http_sticky_module);
-	c->enable = 1;
-	ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "sticky has been called !!");
+	iphp->rrp.current = p;
+
+	pc->sockaddr = peer->sockaddr;
+	pc->socklen = peer->socklen;
+	pc->name = &peer->name;
+
+	/* ngx_unlock_mutex(iphp->rrp.peers->mutex); */
+
+	iphp->rrp.tried[n] |= m;
+	iphp->hash = hash;
 	{
-	ngx_http_core_loc_conf_t  *clcf;
-	clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
-	clcf->handler = ngx_http_sticky_server_handler;
+		ngx_str_t digest;
+
+		if (ngx_http_sticky_misc_md5(iphp->r->pool, peer->sockaddr, peer->socklen, &digest) == NGX_OK) {
+			ngx_str_t cookie_name = ngx_string("route");
+			ngx_str_t cookie_domain = ngx_string(".egasys.com");
+			ngx_str_t cookie_path = ngx_string("/");
+
+			ngx_http_sticky_misc_set_cookie(iphp->r, &cookie_name, &digest, &cookie_domain, &cookie_path, NGX_CONF_UNSET);
+		}
 	}
-*/
+
+	return NGX_OK;
+}
+
+static void ngx_http_upstream_sticky_up_free_peer(ngx_peer_connection_t *pc, void *data, ngx_uint_t state)
+{
+	ngx_str_t digest;
+	ngx_str_t cookie_name = ngx_string("route");
+	ngx_str_t cookie_domain = ngx_string("");
+	ngx_str_t cookie_path = ngx_string("");
+
+	ngx_http_sticky_peer_data_t *iphp;
+
+	ngx_log_error(NGX_LOG_ERR, pc->log, 0, "[sticky/ups_free] %V : (state=%d)", pc->name, state);
+	return;
+	if (state == 0) {
+		iphp = (ngx_http_sticky_peer_data_t *)pc->data;
+		if (ngx_http_sticky_misc_md5(iphp->r->pool, pc->sockaddr, pc->socklen, &digest) == NGX_OK) {
+			ngx_log_error(NGX_LOG_ERR, pc->log, 0, "[sticky/ups_free] set cookie for %V:%V / header_sent:%d", pc->name, &digest, iphp->r->header_sent);
+			ngx_http_sticky_misc_set_cookie(iphp->r, &cookie_name, &digest, &cookie_domain, &cookie_path, 0);
+		}
+		return;
+	}
+}
+
+static char *ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+	ngx_http_upstream_srv_conf_t  *uscf;
+
+	uscf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_upstream_module);
+
+	uscf->peer.init_upstream = ngx_http_sticky_ups_init;
+
+	uscf->flags = NGX_HTTP_UPSTREAM_CREATE
+		|NGX_HTTP_UPSTREAM_MAX_FAILS
+		|NGX_HTTP_UPSTREAM_FAIL_TIMEOUT
+		|NGX_HTTP_UPSTREAM_DOWN;
+
 	return NGX_CONF_OK;
-}
-
-static ngx_int_t ngx_http_sticky_init_worker(ngx_cycle_t *cycle)
-{
-	return NGX_OK;
-}
-
-static ngx_int_t ngx_http_sticky_init(ngx_conf_t *cf)
-{
-/*
-	ngx_http_handler_pt        *h;
-	ngx_http_core_main_conf_t  *cmcf;
-
-	// handle sticky_clea_cookie
-	ngx_http_next_header_filter = ngx_http_top_header_filter;
-	ngx_http_top_header_filter = ngx_http_sticky_clear_cookies_handler;
-
-	// handle sticky_filter
-	cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
-
-	h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
-	if (h == NULL) {
-		return NGX_ERROR;
-	}
-
-	*h = ngx_http_sticky_filter_handler;
-*/
-	void *tmp = (void *)ngx_http_sticky_handler;
-	tmp = NULL;
-	ngx_http_next_header_filter = NULL;
-	return NGX_OK;
 }
