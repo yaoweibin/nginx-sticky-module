@@ -5,7 +5,18 @@ Description:
 	A nginx module to add a sticky cookie to be always forwarded the the same
 	upstream server.
 
-	When sticky module can't apply, it switchs back to classic the Round Robin
+	When dealing with several backend servers, it's sometimes useful that one
+	client (browser) is always served by the same backend server
+	(for session persistance for example).
+
+	Using a persistance by IP (with the ip_hash upstream module) is maybe not
+	a good idea because there could be situations where a lot of different
+	browsers are coming with the same IP address (behind proxies)and the load
+	balancing system won't be fair.
+
+	Using a cookie to track the upstream server makes each browser unique.
+
+	When the sticky module can't apply, it switchs back to classic the Round Robin
 	Upstream.	Sticky module can't apply when :
 		- cookies are not supported by the browser
 		- a browser first connects
@@ -17,7 +28,7 @@ Installation
 	Modify your compile of Nginx by adding the following directive
 	(modified to suit your path of course):
 
-	./configure --add-module=/absolute/path/to/sticky-nginx-module
+	./configure --add-module=/absolute/path/to/nginx-sticky-module
 	make
 	make install
 
@@ -29,6 +40,17 @@ Usage
 		server 127.0.0.1:9002;
 	}
 
+	sticky [name=route] [domain=.foo.bar] [path=/] [expires=1h];
+	  - name:    the name of the cookies used to track the persistant upstream srv
+		           Default: route
+		- domain:  the domain in which the cookie will be valid
+		           Default: nothing. Let the browser handle this.
+		- path:    the path in which the cookie will be valid
+		           Default: nothing. Let the browser handle this.
+		- expires: the validity duration of the cookie
+		           Default: nothing. It's a session cookie.
+							 Restriction: must be a duration greater than one second
+
 Detail Mechanism
 	see docs/mechanism.{vsd,pdf}	
 
@@ -38,7 +60,6 @@ Contributing
 TODO
 	Stress
 	Code review
-	Add cookies parameters (name, domain, path and expires)
 
 Author
 	Jerome Loyet <jerome at loyet dot net>
@@ -76,4 +97,4 @@ Copyright & License
 	LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
 	NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 	SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-	
+
