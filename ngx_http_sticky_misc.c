@@ -63,7 +63,6 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 	set_cookie = NULL;
 
 	for (i=0 ;; i++) {
-		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky/misc_set_cookie] part=0x%p nelts=%d", part, part->nelts);
 		if (part->nelts > 1 || i >= part->nelts) {
 			if (part->next == NULL) {
 				break;
@@ -73,7 +72,6 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 			i = 0;
 		}
 		// ... //
-		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky/misc_set_cookie] headers: %V=%V nelts=%d", &elt->key, &elt->value, part->nelts);
 		if (ngx_strncmp(elt->value.data, name->data, name->len) == 0) {
 			set_cookie = elt;
 			break;
@@ -81,13 +79,11 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 	}
 
 	if (set_cookie != NULL) { // found a Set-Cookie header with the same name: replace it
-		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky/misc_set_cookie] Set-cookie %V found. Replacing it.", name);
 		set_cookie->value.len = p - cookie;
 		set_cookie->value.data = cookie;
 		return NGX_OK;
 	}
 
-	ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky/misc_set_cookie] Set-cookie %V not found. Adding it.", name);
 	set_cookie = ngx_list_push(&r->headers_out.headers);
 	if (set_cookie == NULL) {
 		return NGX_ERROR;

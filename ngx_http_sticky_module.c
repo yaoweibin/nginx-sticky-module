@@ -3,6 +3,8 @@
 typedef struct {
 	ngx_http_upstream_rr_peer_data_t   rrp;
 	ngx_http_request_t                 *r;
+	ngx_str_t                          route;
+	ngx_flag_t                         tried_route;
 } ngx_http_sticky_peer_data_t;
 
 
@@ -69,7 +71,6 @@ ngx_int_t ngx_http_sticky_ups_init(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t 
 static ngx_int_t ngx_http_sticky_ups_init_peer(ngx_http_request_t *r, ngx_http_upstream_srv_conf_t *us)
 {
 	ngx_str_t cookie_name = ngx_string("route");
-	ngx_str_t route;
 	ngx_http_sticky_peer_data_t *spd;
 	ngx_http_upstream_rr_peer_data_t *rrp;
 
@@ -80,8 +81,12 @@ static ngx_int_t ngx_http_sticky_ups_init_peer(ngx_http_request_t *r, ngx_http_u
 		return NGX_ERROR;
 	}
 
-	if (ngx_http_parse_multi_header_lines(&r->headers_in.cookies, &cookie_name, &route) != NGX_DECLINED) {
-		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky/ups_init_peer] got cookie route=%V", &route);			
+	spd->tried_route = 1; /* presume a route cookie has not been found */
+
+	if (ngx_http_parse_multi_header_lines(&r->headers_in.cookies, &cookie_name, &spd->route) != NGX_DECLINED) {
+		/* a route cookie has been found. Let's give it a try */
+		spd->tried_route = 0;
+		ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "[sticky/ups_init_peer] got cookie route=%V", &spd->route);
 	}
 
 	if (ngx_http_upstream_init_round_robin_peer(r, us) != NGX_OK) {
@@ -105,8 +110,36 @@ static ngx_int_t ngx_http_sticky_ups_get(ngx_peer_connection_t *pc, void *data)
 	ngx_str_t digest;
 	ngx_http_sticky_peer_data_t *spd = data;
 
-	ngx_log_error(NGX_LOG_ERR, pc->log, 0, "[sticky/ups_get] enter (tries=%d) spd=0x%p", pc->tries, spd->r->pool);
+	if (!spd->tried_route) {
+		spd->tried_route = 1;
+		if (spd->route.len > 0) {
+			/* we got a route and we never tried it. Let's use it first! */
+			ngx_log_error(NGX_LOG_ERR, pc->log, 0, "[sticky/ups_get] We got a route and never tried it. TRY IT !");
 
+			for (i = 0; i < spd->rrp.peers->number; i++) {
+				ngx_http_upstream_rr_peer_t *peer = &spd->rrp.peers->peer[i];
+
+				if (ngx_http_sticky_misc_md5(spd->r->pool, peer->sockaddr, peer->socklen, &digest) != NGX_OK) {
+					ngx_log_error(NGX_LOG_ERR, pc->log, 0, "[sticky/ups_get] peer \"%V\": can't generate digest", &peer->name);
+					continue;
+				}
+
+				if (ngx_strncmp(spd->route.data, digest.data, digest.len) != 0) {
+					ngx_log_error(NGX_LOG_ERR, pc->log, 0, "[sticky/ups_get] peer \"%V\" with digest \"%V\" does not match \"%V\"", &peer->name, &digest, &spd->route);
+					continue;
+				}
+
+				ngx_log_error(NGX_LOG_ERR, pc->log, 0, "[sticky/ups_get] peer \"%V\" with digest \"%V\" DOES MATCH \"%V\"", &peer->name, &digest, &spd->route);
+				spd->tried_route = 1;
+				pc->sockaddr = peer->sockaddr;
+				pc->socklen = peer->socklen;
+				pc->name = &peer->name;
+				return NGX_OK;
+			}
+		}
+	}
+
+	/* switch back to classic rr */
 	if ((i = ngx_http_upstream_get_round_robin_peer(pc, data)) != NGX_OK) {
 		return i;
 	}
