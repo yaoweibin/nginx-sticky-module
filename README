@@ -49,7 +49,7 @@ Usage
 		           Default: nothing. Let the browser handle this.
 		- expires: the validity duration of the cookie
 		           Default: nothing. It's a session cookie.
-							 Restriction: must be a duration greater than one second
+		           Restriction: must be a duration greater than one second
 
 Detail Mechanism
 	see docs/mechanism.{vsd,pdf}	
