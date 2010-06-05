@@ -3,7 +3,7 @@
 #include <ngx_http.h>
 #include <ngx_md5.h>
 
-#define NGX__HASH_LENGTH (MD5_DIGEST_LENGTH * 2)
+#define NGX_HASH_LENGTH (MD5_DIGEST_LENGTH * 2)
 
 ngx_int_t ngx_http_sticky_misc_set_cookie (ngx_http_request_t *r, ngx_str_t *name, ngx_str_t *value, ngx_str_t *domain, ngx_str_t *path, time_t expires);
 ngx_int_t ngx_http_sticky_misc_remove_set_cookies(ngx_http_request_t *r, ngx_str_t *cookie_name);
