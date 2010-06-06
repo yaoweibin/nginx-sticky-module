@@ -28,7 +28,7 @@ Installation
 	Modify your compile of Nginx by adding the following directive
 	(modified to suit your path of course):
 
-	./configure --add-module=/absolute/path/to/nginx-sticky-module
+	./configure ... --add-module=/absolute/path/to/nginx-sticky-module
 	make
 	make install
 
@@ -52,7 +52,7 @@ Usage
 	             Restriction: must be a duration greater than one second
 
 Detail Mechanism
-	see docs/mechanism.{vsd,pdf}	
+	see docs/sticky.{vsd,pdf}	
 
 Contributing
 	http://code.google.com/p/nginx-sticky-module/
