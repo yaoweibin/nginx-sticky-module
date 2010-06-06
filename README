@@ -41,7 +41,7 @@ Usage
 	}
 
 	sticky [name=route] [domain=.foo.bar] [path=/] [expires=1h];
-	  - name:    the name of the cookies used to track the persistant upstream srv
+		- name:    the name of the cookies used to track the persistant upstream srv
 		           Default: route
 		- domain:  the domain in which the cookie will be valid
 		           Default: nothing. Let the browser handle this.
