@@ -41,15 +41,15 @@ Usage
 	}
 
 	sticky [name=route] [domain=.foo.bar] [path=/] [expires=1h];
-		- name:    the name of the cookies used to track the persistant upstream srv
-		           Default: route
-		- domain:  the domain in which the cookie will be valid
-		           Default: nothing. Let the browser handle this.
-		- path:    the path in which the cookie will be valid
-		           Default: nothing. Let the browser handle this.
-		- expires: the validity duration of the cookie
-		           Default: nothing. It's a session cookie.
-		           Restriction: must be a duration greater than one second
+	  - name:    the name of the cookies used to track the persistant upstream srv
+	             Default: route
+	  - domain:  the domain in which the cookie will be valid
+	             Default: nothing. Let the browser handle this.
+	  - path:    the path in which the cookie will be valid
+	             Default: nothing. Let the browser handle this.
+	  - expires: the validity duration of the cookie
+	             Default: nothing. It's a session cookie.
+	             Restriction: must be a duration greater than one second
 
 Detail Mechanism
 	see docs/mechanism.{vsd,pdf}	
