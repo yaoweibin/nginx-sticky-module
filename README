@@ -40,16 +40,22 @@ Usage
 		server 127.0.0.1:9002;
 	}
 
-	sticky [name=route] [domain=.foo.bar] [path=/] [expires=1h];
+	sticky [name=route] [domain=.foo.bar] [path=/] [expires=1h] [hash=md5|sha1];
 	  - name:    the name of the cookies used to track the persistant upstream srv
-	             Default: route
+	             default: route
+
 	  - domain:  the domain in which the cookie will be valid
-	             Default: nothing. Let the browser handle this.
+	             default: nothing. Let the browser handle this.
+
 	  - path:    the path in which the cookie will be valid
-	             Default: nothing. Let the browser handle this.
+	             default: nothing. Let the browser handle this.
+
 	  - expires: the validity duration of the cookie
-	             Default: nothing. It's a session cookie.
-	             Restriction: must be a duration greater than one second
+	             refault: nothing. It's a session cookie.
+	             restriction: must be a duration greater than one second
+
+	  - hash:    the hash mechanism to encode upstream server
+	             default: md5
 
 Detail Mechanism
 	see docs/sticky.{vsd,pdf}	
@@ -60,6 +66,7 @@ Contributing
 TODO
 	Stress
 	Code review
+	Optimize by pre-hashing upstream server at init
 
 Author
 	Jerome Loyet <jerome at loyet dot net>

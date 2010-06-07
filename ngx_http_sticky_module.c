@@ -10,6 +10,7 @@ typedef struct {
 	ngx_str_t                     cookie_domain;
 	ngx_str_t                     cookie_path;
 	time_t                        cookie_expires;
+	ngx_http_sticky_misc_hash_pt  hash;
 } ngx_http_sticky_srv_conf_t;
 
 typedef struct {
@@ -121,7 +122,7 @@ static ngx_int_t ngx_http_sticky_ups_get(ngx_peer_connection_t *pc, void *data)
 			for (i = 0; i < spd->rrp.peers->number; i++) {
 				ngx_http_upstream_rr_peer_t *peer = &spd->rrp.peers->peer[i];
 
-				if (ngx_http_sticky_misc_md5(spd->r->pool, peer->sockaddr, peer->socklen, &digest) != NGX_OK) {
+				if (spd->sticky_cf->hash(spd->r->pool, peer->sockaddr, peer->socklen, &digest) != NGX_OK) {
 					ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/ups_get] peer \"%V\": can't generate digest", &peer->name);
 					continue;
 				}
@@ -146,7 +147,7 @@ static ngx_int_t ngx_http_sticky_ups_get(ngx_peer_connection_t *pc, void *data)
 		return i;
 	}
 
-	if (ngx_http_sticky_misc_md5(spd->r->pool, pc->sockaddr, pc->socklen, &digest) == NGX_OK) {
+	if (spd->sticky_cf->hash(spd->r->pool, pc->sockaddr, pc->socklen, &digest) == NGX_OK) {
 		ngx_http_sticky_misc_set_cookie(spd->r, &spd->sticky_cf->cookie_name, &digest, &spd->sticky_cf->cookie_domain, &spd->sticky_cf->cookie_path, spd->sticky_cf->cookie_expires);
 	}
 
@@ -163,50 +164,77 @@ static char *ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 	ngx_str_t domain = ngx_string("");
 	ngx_str_t path = ngx_string("");
 	time_t expires = NGX_CONF_UNSET;
+	ngx_http_sticky_misc_hash_pt hash = ngx_http_sticky_misc_md5;
 
 	for (i=1; i<cf->args->nelts; i++) {
 		ngx_str_t *value = cf->args->elts;
 
 		if ((u_char *)ngx_strstr(value[i].data, "name=") == value[i].data) {
 			if (value[i].len <= sizeof("name=") - 1) {
-				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] a value must be provided to \"name=\"");
+				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "a value must be provided to \"name=\"");
 				return NGX_CONF_ERROR;
 			}
 			name.len = value[i].len - ngx_strlen("name=");
 			name.data = (u_char *)(value[i].data + sizeof("name=") - 1);
+			continue;
 		}
 
 		if ((u_char *)ngx_strstr(value[i].data, "domain=") == value[i].data) {
 			if (value[i].len <= ngx_strlen("domain=")) {
-				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] a value must be provided to \"domain=\"");
+				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "a value must be provided to \"domain=\"");
 				return NGX_CONF_ERROR;
 			}
 			domain.len = value[i].len - ngx_strlen("domain=");
 			domain.data = (u_char *)(value[i].data + sizeof("domain=") - 1);
+			continue;
 		}
 
 		if ((u_char *)ngx_strstr(value[i].data, "path=") == value[i].data) {
 			if (value[i].len <= ngx_strlen("path=")) {
-				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] a value must be provided to \"path=\"");
+				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "a value must be provided to \"path=\"");
 				return NGX_CONF_ERROR;
 			}
 			path.len = value[i].len - ngx_strlen("path=");
 			path.data = (u_char *)(value[i].data + sizeof("path=") - 1);
+			continue;
 		}
 
 		if ((u_char *)ngx_strstr(value[i].data, "expires=") == value[i].data) {
 			if (value[i].len <= sizeof("expires=") - 1) {
-				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] a value must be provided to \"expires=\"");
+				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "a value must be provided to \"expires=\"");
 				return NGX_CONF_ERROR;
 			}
 			tmp.len =  value[i].len - ngx_strlen("expires=");
 			tmp.data = (u_char *)(value[i].data + sizeof("expires=") - 1);
 			expires = ngx_parse_time(&tmp, 1);
 			if (expires == NGX_ERROR || expires < 1) {
-				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "[sticky] invalid value for \"expires=\"");
+				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid value for \"expires=\"");
 				return NGX_CONF_ERROR;
 			}
+			continue;
 		}
+	
+		if ((u_char *)ngx_strstr(value[i].data, "hash=") == value[i].data) {
+			if (value[i].len <= sizeof("hash=") - 1) {
+				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "a value must be provided to \"hash=\"");
+				return NGX_CONF_ERROR;
+			}
+			tmp.len =  value[i].len - ngx_strlen("hash=");
+			tmp.data = (u_char *)(value[i].data + sizeof("hash=") - 1);
+			if (ngx_strncmp(tmp.data, "md5", sizeof("md5") - 1) == 0 ) {
+				hash = ngx_http_sticky_misc_md5;
+				continue;
+			}
+			if (ngx_strncmp(tmp.data, "sha1", sizeof("sha1") - 1) == 0 ) {
+				hash = ngx_http_sticky_misc_sha1;
+				continue;
+			}
+			ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "wrong value for \"hash=\": md5 or sha1");
+			return NGX_CONF_ERROR;
+		}
+
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid arguement (%V)", &value[i]);
+		return NGX_CONF_ERROR;
 	}
 
 	uscf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_upstream_module);
@@ -223,6 +251,7 @@ static char *ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 	usscf->cookie_domain = domain;
 	usscf->cookie_path = path;
 	usscf->cookie_expires = expires;
+	usscf->hash = hash;
 	
 	return NGX_CONF_OK;
 }
