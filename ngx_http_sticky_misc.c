@@ -1,3 +1,9 @@
+#include <nginx.h>
+#include <ngx_config.h>
+#include <ngx_core.h>
+#include <ngx_http.h>
+#include <ngx_md5.h>
+
 #include "ngx_http_sticky_misc.h"
 
 ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name, ngx_str_t *value, ngx_str_t *domain, ngx_str_t *path, time_t expires)
@@ -254,7 +260,11 @@ ngx_int_t ngx_http_sticky_misc_get_var(ngx_http_request_t *r, u_char *name, ngx_
 	value->data = (u_char *)"";
 
 	key = ngx_hash_strlow(hash.data, n.data, n.len);
+#if nginx_version >= 8036
 	t = ngx_http_get_variable(r, &n, key);
+#else
+	t = ngx_http_get_variable(r, &n, key, 1);
+#endif
 
 	value->len = t->len;
 	value->data = t->data;

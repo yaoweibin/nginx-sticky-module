@@ -1,7 +1,6 @@
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
-#include <ngx_md5.h>
 
 #define NGX_HASH_LENGTH (MD5_DIGEST_LENGTH * 2)
 
