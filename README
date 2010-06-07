@@ -66,7 +66,6 @@ Contributing
 TODO
 	Stress
 	Code review
-	Optimize by pre-hashing upstream server at init
 
 Author
 	Jerome Loyet <jerome at loyet dot net>

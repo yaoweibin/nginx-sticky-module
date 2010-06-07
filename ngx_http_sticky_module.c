@@ -5,12 +5,19 @@
 #include "ngx_http_sticky_misc.h"
 
 typedef struct {
+	ngx_http_upstream_rr_peers_t rr_peers;
+	ngx_uint_t  number;
+	ngx_str_t peer[1];
+} ngx_http_sticky_peers_data_t;
+
+typedef struct {
 	ngx_http_upstream_srv_conf_t  uscf;
 	ngx_str_t                     cookie_name;
 	ngx_str_t                     cookie_domain;
 	ngx_str_t                     cookie_path;
 	time_t                        cookie_expires;
 	ngx_http_sticky_misc_hash_pt  hash;
+	ngx_http_sticky_peers_data_t  *peers;
 } ngx_http_sticky_srv_conf_t;
 
 typedef struct {
@@ -65,8 +72,24 @@ ngx_module_t  ngx_http_sticky_module = {
 
 ngx_int_t ngx_http_sticky_ups_init(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t *us)
 {
+	ngx_http_upstream_rr_peers_t *rr_peers;
+	ngx_http_sticky_srv_conf_t *conf;
+	ngx_uint_t i;
+
 	if (ngx_http_upstream_init_round_robin(cf, us) != NGX_OK) {
 		return NGX_ERROR;
+	}
+	rr_peers = us->peer.data;
+
+	conf = ngx_http_conf_upstream_srv_conf(us, ngx_http_sticky_module);
+	conf->peers = ngx_pcalloc(cf->pool, sizeof(ngx_http_sticky_peers_data_t) + sizeof(ngx_str_t) * (rr_peers->number - 1));
+	if (conf->peers == NULL) {
+		return NGX_ERROR;
+	}
+	conf->peers->number = rr_peers->number;
+
+	for (i=0; i<rr_peers->number; i++) {
+		conf->hash(cf->pool, rr_peers->peer[i].sockaddr, rr_peers->peer[i].socklen, &conf->peers->peer[i]);
 	}
 
 	us->peer.init = ngx_http_sticky_ups_init_peer;
@@ -110,8 +133,8 @@ static ngx_int_t ngx_http_sticky_ups_init_peer(ngx_http_request_t *r, ngx_http_u
 static ngx_int_t ngx_http_sticky_ups_get(ngx_peer_connection_t *pc, void *data)
 {
 	ngx_uint_t i;
-	ngx_str_t digest;
 	ngx_http_sticky_peer_data_t *spd = data;
+	ngx_http_sticky_srv_conf_t *conf = spd->sticky_cf;
 
 	if (!spd->tried_route) {
 		spd->tried_route = 1;
@@ -119,20 +142,15 @@ static ngx_int_t ngx_http_sticky_ups_get(ngx_peer_connection_t *pc, void *data)
 			/* we got a route and we never tried it. Let's use it first! */
 			ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/ups_get] We got a route and never tried it. TRY IT !");
 
-			for (i = 0; i < spd->rrp.peers->number; i++) {
+			for (i=0; i<conf->peers->number && i<spd->rrp.peers->number; i++) {
 				ngx_http_upstream_rr_peer_t *peer = &spd->rrp.peers->peer[i];
 
-				if (spd->sticky_cf->hash(spd->r->pool, peer->sockaddr, peer->socklen, &digest) != NGX_OK) {
-					ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/ups_get] peer \"%V\": can't generate digest", &peer->name);
+				if (ngx_strncmp(spd->route.data, conf->peers->peer[i].data, conf->peers->peer[i].len) != 0) {
+					ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/ups_get] peer \"%V\" with digest \"%V\" does not match \"%V\"", &peer->name, &conf->peers->peer[i], &spd->route);
 					continue;
 				}
 
-				if (ngx_strncmp(spd->route.data, digest.data, digest.len) != 0) {
-					ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/ups_get] peer \"%V\" with digest \"%V\" does not match \"%V\"", &peer->name, &digest, &spd->route);
-					continue;
-				}
-
-				ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/ups_get] peer \"%V\" with digest \"%V\" DOES MATCH \"%V\"", &peer->name, &digest, &spd->route);
+				ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/ups_get] peer \"%V\" with digest \"%V\" DOES MATCH \"%V\"", &peer->name, &conf->peers->peer[i], &spd->route);
 				spd->tried_route = 1;
 				pc->sockaddr = peer->sockaddr;
 				pc->socklen = peer->socklen;
@@ -147,8 +165,13 @@ static ngx_int_t ngx_http_sticky_ups_get(ngx_peer_connection_t *pc, void *data)
 		return i;
 	}
 
-	if (spd->sticky_cf->hash(spd->r->pool, pc->sockaddr, pc->socklen, &digest) == NGX_OK) {
-		ngx_http_sticky_misc_set_cookie(spd->r, &spd->sticky_cf->cookie_name, &digest, &spd->sticky_cf->cookie_domain, &spd->sticky_cf->cookie_path, spd->sticky_cf->cookie_expires);
+	for (i=0; i<conf->peers->number && i<spd->rrp.peers->number; i++) {
+		ngx_http_upstream_rr_peer_t *peer = &spd->rrp.peers->peer[i];
+
+		if (peer->sockaddr == pc->sockaddr && peer->socklen == pc->socklen) {
+			ngx_http_sticky_misc_set_cookie(spd->r, &conf->cookie_name, &conf->peers->peer[i], &conf->cookie_domain, &conf->cookie_path, conf->cookie_expires);
+			break;
+		}
 	}
 
 	return NGX_OK;
