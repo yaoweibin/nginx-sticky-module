@@ -16,11 +16,15 @@ Description:
 
 	Using a cookie to track the upstream server makes each browser unique.
 
-	When the sticky module can't apply, it switchs back to classic the Round Robin
+	When the sticky module can't apply, it switchs back to the classic Round Robin
 	Upstream.	Sticky module can't apply when :
 		- cookies are not supported by the browser
 		- a browser first connects
 		- the upstream server choosed by the sticky module is in error
+
+	* Sticky module is based on a "best effort" algorithm. Its aim is not to handle
+	* security somehow. It's been made to ensure that normal users are always
+	* redirected to the same  backend server: that's all!
 
 Installation
 
@@ -40,7 +44,7 @@ Usage
 		server 127.0.0.1:9002;
 	}
 
-	sticky [name=route] [domain=.foo.bar] [path=/] [expires=1h] [hash=md5|sha1];
+	sticky [name=route] [domain=.foo.bar] [path=/] [expires=1h] [hash=index|md5|sha1];
 	  - name:    the name of the cookies used to track the persistant upstream srv
 	             default: route
 
@@ -55,6 +59,10 @@ Usage
 	             restriction: must be a duration greater than one second
 
 	  - hash:    the hash mechanism to encode upstream server
+		           none: an indexed value. Quicker but less safe ?
+							 md5|sha1: well known hash
+							 index:    it's not hashed, an in-memory index is used instead
+	                       it's quicker and the overhead is shorter
 	             default: md5
 
 Detail Mechanism
