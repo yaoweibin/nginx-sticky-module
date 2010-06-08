@@ -1,3 +1,8 @@
+
+/*
+ * Copyright (C) 2010 Jerome Loyet (jerome at loyet dot net)
+ */
+
 #include <nginx.h>
 #include <ngx_config.h>
 #include <ngx_core.h>
