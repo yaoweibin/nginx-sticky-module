@@ -59,9 +59,8 @@ Usage
 	             restriction: must be a duration greater than one second
 
 	  - hash:    the hash mechanism to encode upstream server
-		           none: an indexed value. Quicker but less safe ?
-							 md5|sha1: well known hash
-							 index:    it's not hashed, an in-memory index is used instead
+	             md5|sha1: well known hash
+	             index:    it's not hashed, an in-memory index is used instead
 	                       it's quicker and the overhead is shorter
 	             default: md5
 
