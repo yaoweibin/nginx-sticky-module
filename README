@@ -62,6 +62,11 @@ Usage
 	             md5|sha1: well known hash
 	             index:    it's not hashed, an in-memory index is used instead
 	                       it's quicker and the overhead is shorter
+	                       Warning: the matching against upstream servers list
+	                       is inconsistent. So, at reload, if upstreams servers
+	                       has changed, index values are not guaranted to
+	                       correspond to the same server as before!
+	                       USE IT WITH CAUTION and only if you need to!
 	             default: md5
 
 Detail Mechanism
