@@ -58,7 +58,8 @@ Usage
 	             refault: nothing. It's a session cookie.
 	             restriction: must be a duration greater than one second
 
-	  - hash:    the hash mechanism to encode upstream server
+	  - hash:    the hash mechanism to encode upstream server. It cant' be used
+	             with hmac.
 	             md5|sha1: well known hash
 	             index:    it's not hashed, an in-memory index is used instead
 	                       it's quicker and the overhead is shorter
@@ -68,6 +69,15 @@ Usage
 	                       correspond to the same server as before!
 	                       USE IT WITH CAUTION and only if you need to!
 	             default: md5
+
+	  - hmac:    the HMAC hash mechanism to encode upstream server
+	             It's like the hash mechanism but it uses hmac_key
+	             to secure the hashing. It can't be used with hash.
+	             md5|sha1: well known hash
+	             default: none. see hash
+
+	  -hmac_key: the key to use with hmac. It's mandatory when hmac is set
+	             default: nothing.
 
 Detail Mechanism
 	see docs/sticky.{vsd,pdf}	

@@ -28,7 +28,9 @@ typedef struct {
 	ngx_str_t                     cookie_domain;
 	ngx_str_t                     cookie_path;
 	time_t                        cookie_expires;
+	ngx_str_t                     hmac_key;
 	ngx_http_sticky_misc_hash_pt  hash;
+	ngx_http_sticky_misc_hmac_pt  hmac;
 	ngx_http_sticky_peers_t  *peers;
 } ngx_http_sticky_srv_conf_t;
 
@@ -125,6 +127,8 @@ ngx_int_t ngx_http_sticky_ups_init(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t 
 		for (i=0; i < rr_peers->number; i++, n++) {
 			if (conf->hash) {
 				conf->hash(cf->pool, rr_peers->peer[i].sockaddr, rr_peers->peer[i].socklen, &peer[n].digest);
+			} else if (conf->hmac && conf->hmac_key.len > 0) {
+				conf->hmac(cf->pool, rr_peers->peer[i].sockaddr, rr_peers->peer[i].socklen, &conf->hmac_key, &peer[n].digest);
 			}
 			peer[n].sockaddr = rr_peers->peer[i].sockaddr;
 			peer[n].socklen = rr_peers->peer[i].socklen;
@@ -138,6 +142,8 @@ ngx_int_t ngx_http_sticky_ups_init(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t 
 		for (i=0; i < rr_peers->next->number; i++, n++) {
 			if (conf->hash) {
 				conf->hash(cf->pool, rr_peers->next->peer[i].sockaddr, rr_peers->next->peer[i].socklen, &peer[n].digest);
+			} else if (conf->hmac && conf->hmac_key.len > 0) {
+				conf->hmac(cf->pool, rr_peers->peer[i].sockaddr, rr_peers->peer[i].socklen, &conf->hmac_key, &peer[n].digest);
 			}
 			peer[n].sockaddr = rr_peers->next->peer[i].sockaddr;
 			peer[n].socklen = rr_peers->next->peer[i].socklen;
@@ -201,7 +207,7 @@ static ngx_int_t ngx_http_sticky_ups_get(ngx_peer_connection_t *pc, void *data)
 			/* we got a route and we never tried it. Let's use it first! */
 			ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/ups_get] We got a route and never tried it. TRY IT !");
 
-			if (conf->hash) {
+			if (conf->hash || conf->hmac) {
 				/* if hashing, find the corresponding peer and use it ! */
 				for (i=0; i < conf->peers->number; i++) {
 					peer = &conf->peers->peer[i];
@@ -244,8 +250,9 @@ static ngx_int_t ngx_http_sticky_ups_get(ngx_peer_connection_t *pc, void *data)
 		peer = &conf->peers->peer[i];
 
 		if (peer->sockaddr == pc->sockaddr && peer->socklen == pc->socklen) {
-			if (conf->hash) {
+			if (conf->hash || conf->hmac) {
 				ngx_http_sticky_misc_set_cookie(spd->r, &conf->cookie_name, &conf->peers->peer[i].digest, &conf->cookie_domain, &conf->cookie_path, conf->cookie_expires);
+				ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/ups_get] set cookie \"%V\" value=\"%V\" index=%d", &conf->cookie_name, &conf->peers->peer[i].digest, i);
 			} else {
 				ngx_str_t route;
 				ngx_uint_t tmp = i;
@@ -277,8 +284,10 @@ static char *ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 	ngx_str_t name = ngx_string("route");
 	ngx_str_t domain = ngx_string("");
 	ngx_str_t path = ngx_string("");
+	ngx_str_t hmac_key = ngx_string("");
 	time_t expires = NGX_CONF_UNSET;
-	ngx_http_sticky_misc_hash_pt hash = ngx_http_sticky_misc_md5;
+	ngx_http_sticky_misc_hash_pt hash = NGX_CONF_UNSET_PTR;
+	ngx_http_sticky_misc_hmac_pt hmac = NULL;
 
 	for (i=1; i<cf->args->nelts; i++) {
 		ngx_str_t *value = cf->args->elts;
@@ -329,6 +338,10 @@ static char *ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 		}
 	
 		if ((u_char *)ngx_strstr(value[i].data, "hash=") == value[i].data) {
+			if (hmac) {
+				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "please choose between \"hash=\" and \"hmac=\"");
+				return NGX_CONF_ERROR;
+			}
 			if (value[i].len <= sizeof("hash=") - 1) {
 				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "a value must be provided to \"hash=\"");
 				return NGX_CONF_ERROR;
@@ -350,9 +363,60 @@ static char *ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 			ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "wrong value for \"hash=\": index, md5 or sha1");
 			return NGX_CONF_ERROR;
 		}
+	
+		if ((u_char *)ngx_strstr(value[i].data, "hmac=") == value[i].data) {
+			if (hash != NGX_CONF_UNSET_PTR) {
+				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "please choose between \"hash=\" and \"hmac=\"");
+				return NGX_CONF_ERROR;
+			}
+			if (value[i].len <= sizeof("hmac=") - 1) {
+				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "a value must be provided to \"hmac=\"");
+				return NGX_CONF_ERROR;
+			}
+			tmp.len =  value[i].len - ngx_strlen("hmac=");
+			tmp.data = (u_char *)(value[i].data + sizeof("hmac=") - 1);
+			if (ngx_strncmp(tmp.data, "md5", sizeof("md5") - 1) == 0 ) {
+				hmac = ngx_http_sticky_misc_hmac_md5;
+				continue;
+			}
+			if (ngx_strncmp(tmp.data, "sha1", sizeof("sha1") - 1) == 0 ) {
+				hmac = ngx_http_sticky_misc_hmac_sha1;
+				continue;
+			}
+			ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "wrong value for \"hmac=\": md5 or sha1");
+			return NGX_CONF_ERROR;
+		}
+
+		if ((u_char *)ngx_strstr(value[i].data, "hmac_key=") == value[i].data) {
+			if (value[i].len <= ngx_strlen("hmac_key=")) {
+				ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "a value must be provided to \"hmac_key=\"");
+				return NGX_CONF_ERROR;
+			}
+			hmac_key.len = value[i].len - ngx_strlen("hmac_key=");
+			hmac_key.data = (u_char *)(value[i].data + sizeof("hmac_key=") - 1);
+			continue;
+		}
 
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid arguement (%V)", &value[i]);
 		return NGX_CONF_ERROR;
+	}
+
+	if (hash == NGX_CONF_UNSET_PTR && hmac == NULL) {
+		hash = ngx_http_sticky_misc_md5;
+	}
+
+	if (hmac_key.len > 0 && hash != NGX_CONF_UNSET_PTR) {
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "\"hmac_key=\" is meaningless when \"hmac\" is used. Please remove it.");
+		return NGX_CONF_ERROR;
+	}
+
+	if (hmac_key.len == 0 && hmac != NULL) {
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "please specify \"hmac_key=\" when using \"hmac\"");
+		return NGX_CONF_ERROR;
+	}
+
+	if (hash == NGX_CONF_UNSET_PTR) {
+		hash = NULL;
 	}
 
 	uscf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_upstream_module);
@@ -370,6 +434,8 @@ static char *ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 	usscf->cookie_path = path;
 	usscf->cookie_expires = expires;
 	usscf->hash = hash;
+	usscf->hmac = hmac;
+	usscf->hmac_key = hmac_key;
 	
 	return NGX_CONF_OK;
 }
