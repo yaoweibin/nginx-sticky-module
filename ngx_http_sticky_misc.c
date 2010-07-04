@@ -39,7 +39,7 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 	}
 
 	/*; Max-Age= */
-	if (expires > NGX_CONF_UNSET) {
+	if (expires != NGX_CONF_UNSET) {
 		len += sizeof("; Max-Age=") - 1 + NGX_TIME_T_LEN;
 	}
 
@@ -62,7 +62,7 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 		p = ngx_copy(p, domain->data, domain->len);
 	}
 
-	if (expires > NGX_CONF_UNSET) {
+	if (expires != NGX_CONF_UNSET) {
 		p = ngx_copy(p, "; Max-Age=", sizeof("; Max_Age=") - 1);
 		p = ngx_snprintf(p, NGX_TIME_T_LEN, "%T", expires);
 	}
