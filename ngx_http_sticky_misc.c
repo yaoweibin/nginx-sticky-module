@@ -48,7 +48,7 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 		len += sizeof("; Path=") - 1 + path->len;
 	}
 
-	cookie = ngx_pnalloc(r->pool, len + 1);	
+	cookie = ngx_pnalloc(r->pool, len);	
 	if (cookie == NULL) {
 		return NGX_ERROR;
 	}
@@ -113,9 +113,9 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 ngx_int_t ngx_http_sticky_misc_md5(ngx_pool_t *pool, void *in, size_t len, ngx_str_t *digest)
 {
 	ngx_md5_t md5;
-	u_char hash[MD5_DIGEST_LENGTH + 1];
+	u_char hash[MD5_DIGEST_LENGTH];
 
-	digest->data = ngx_pcalloc(pool, (MD5_DIGEST_LENGTH * 2) + 1);
+	digest->data = ngx_pcalloc(pool, MD5_DIGEST_LENGTH * 2);
 	if (digest->data == NULL) {
 		return NGX_ERROR;
 	}
@@ -132,9 +132,9 @@ ngx_int_t ngx_http_sticky_misc_md5(ngx_pool_t *pool, void *in, size_t len, ngx_s
 ngx_int_t ngx_http_sticky_misc_sha1(ngx_pool_t *pool, void *in, size_t len, ngx_str_t *digest)
 {
 	ngx_sha1_t sha1;
-	u_char hash[SHA_DIGEST_LENGTH + 1];
+	u_char hash[SHA_DIGEST_LENGTH];
 
-	digest->data = ngx_pcalloc(pool, (SHA_DIGEST_LENGTH * 2) + 1);
+	digest->data = ngx_pcalloc(pool, SHA_DIGEST_LENGTH * 2);
 	if (digest->data == NULL) {
 		return NGX_ERROR;
 	}
@@ -150,12 +150,12 @@ ngx_int_t ngx_http_sticky_misc_sha1(ngx_pool_t *pool, void *in, size_t len, ngx_
 
 ngx_int_t ngx_http_sticky_misc_hmac_md5(ngx_pool_t *pool, void *in, size_t len, ngx_str_t *key, ngx_str_t *digest)
 {
-	u_char hash[MD5_DIGEST_LENGTH + 1];
+	u_char hash[MD5_DIGEST_LENGTH];
 	u_char k[MD5_CBLOCK];
 	ngx_md5_t md5;
 	u_int i;
 
-	digest->data = ngx_pcalloc(pool, (MD5_DIGEST_LENGTH * 2) + 1);
+	digest->data = ngx_pcalloc(pool, MD5_DIGEST_LENGTH * 2);
 	if (digest->data == NULL) {
 		return NGX_ERROR;
 	}
@@ -198,12 +198,12 @@ ngx_int_t ngx_http_sticky_misc_hmac_md5(ngx_pool_t *pool, void *in, size_t len, 
 
 ngx_int_t ngx_http_sticky_misc_hmac_sha1(ngx_pool_t *pool, void *in, size_t len, ngx_str_t *key, ngx_str_t *digest)
 {
-	u_char hash[SHA_DIGEST_LENGTH + 1];
+	u_char hash[SHA_DIGEST_LENGTH];
 	u_char k[SHA_CBLOCK];
 	ngx_sha1_t sha1;
 	u_int i;
 
-	digest->data = ngx_pcalloc(pool, (SHA_DIGEST_LENGTH * 2) + 1);
+	digest->data = ngx_pcalloc(pool, SHA_DIGEST_LENGTH * 2);
 	if (digest->data == NULL) {
 		return NGX_ERROR;
 	}
