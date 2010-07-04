@@ -12,6 +12,10 @@
 
 #include "ngx_http_sticky_misc.h"
 
+#ifndef ngx_str_set
+	#define ngx_str_set(str, text) (str)->len = sizeof(text) - 1; (str)->data = (u_char *) text
+#endif
+
 ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name, ngx_str_t *value, ngx_str_t *domain, ngx_str_t *path, time_t expires)
 {
 	u_char  *cookie, *p;
@@ -22,11 +26,9 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 	ngx_uint_t i;
 
 	if (value == NULL) {
-		remove.len = sizeof("_remove_") - 1;
-		remove.data = (u_char *)"_remove_";
+		ngx_str_set(&remove, "_remove_");
 		value = &remove;
 	}
-
 
 	/*    name        =   value */
 	len = name->len + 1 + value->len;
@@ -38,7 +40,7 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 
 	/*; Max-Age= */
 	if (expires > NGX_CONF_UNSET) {
-		len += sizeof("; Max-Age=") - 1 + sizeof("1275396350") - 1;
+		len += sizeof("; Max-Age=") - 1 + NGX_TIME_T_LEN;
 	}
 
 	/* ; Path= */
@@ -62,7 +64,7 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 
 	if (expires > NGX_CONF_UNSET) {
 		p = ngx_copy(p, "; Max-Age=", sizeof("; Max_Age=") - 1);
-		p = ngx_snprintf(p, sizeof("1275396350") - 1, "%T", expires);
+		p = ngx_snprintf(p, NGX_TIME_T_LEN, "%T", expires);
 	}
 
 	if (path->len > 0) {
@@ -101,8 +103,7 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 		return NGX_ERROR;
 	}
 	set_cookie->hash = 1;
-	set_cookie->key.len = sizeof("Set-Cookie") - 1;
-	set_cookie->key.data = (u_char *) "Set-Cookie";
+	ngx_str_set(&set_cookie->key, "Set-Cookie");
 	set_cookie->value.len = p - cookie;
 	set_cookie->value.data = cookie;
 
