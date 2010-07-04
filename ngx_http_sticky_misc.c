@@ -73,7 +73,7 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 	}
 
 	part = &r->headers_out.headers.part;
-	elt = (ngx_table_elt_t *)part->elts;
+	elt = part->elts;
 	set_cookie = NULL;
 
 	for (i=0 ;; i++) {
@@ -82,7 +82,7 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 				break;
 			}
 			part = part->next;
-			elt = (ngx_table_elt_t *)part->elts;
+			elt = part->elts;
 			i = 0;
 		}
 		// ... //
