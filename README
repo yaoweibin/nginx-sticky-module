@@ -74,7 +74,7 @@ Usage
 	             It's like the hash mechanism but it uses hmac_key
 	             to secure the hashing. It can't be used with hash.
 	             md5|sha1: well known hash
-	             default: none. see hash
+	             default: none. see hash.
 
 	  -hmac_key: the key to use with hmac. It's mandatory when hmac is set
 	             default: nothing.
