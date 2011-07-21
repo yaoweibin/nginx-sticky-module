@@ -3,6 +3,9 @@
  * Copyright (C) 2010 Jerome Loyet (jerome at loyet dot net)
  */
 
+#ifndef _NGX_HTTP_STICKY_MISC_H_INCLUDED_
+#define _NGX_HTTP_STICKY_MISC_H_INCLUDED_
+
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_http.h>
@@ -15,3 +18,5 @@ ngx_int_t ngx_http_sticky_misc_md5(ngx_pool_t *pool, void *in, size_t len, ngx_s
 ngx_int_t ngx_http_sticky_misc_sha1(ngx_pool_t *pool, void *in, size_t len, ngx_str_t *digest);
 ngx_int_t ngx_http_sticky_misc_hmac_md5(ngx_pool_t *pool, void *in, size_t len, ngx_str_t *key, ngx_str_t *digest);
 ngx_int_t ngx_http_sticky_misc_hmac_sha1(ngx_pool_t *pool, void *in, size_t len, ngx_str_t *key, ngx_str_t *digest);
+
+#endif /* _NGX_HTTP_STICKY_MISC_H_INCLUDED_ */
