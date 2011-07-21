@@ -14,6 +14,7 @@ typedef struct {
 	struct sockaddr *sockaddr;
 	socklen_t        socklen;
 	ngx_str_t       *name;
+	int              down;
 } ngx_http_sticky_peer_t;
 
 typedef struct {
@@ -133,6 +134,7 @@ ngx_int_t ngx_http_sticky_ups_init(ngx_conf_t *cf, ngx_http_upstream_srv_conf_t 
 			peer[n].sockaddr = rr_peers->peer[i].sockaddr;
 			peer[n].socklen = rr_peers->peer[i].socklen;
 			peer[n].name = &rr_peers->peer[i].name;
+			peer[n].down = rr_peers->peer[i].down;
 		}
 	}
 
@@ -201,6 +203,8 @@ static ngx_int_t ngx_http_sticky_ups_get(ngx_peer_connection_t *pc, void *data)
 	ngx_http_sticky_srv_conf_t *conf = spd->sticky_cf;
 	ngx_http_sticky_peer_t *peer;
 
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/ups_get] enter with tried_route=%d", spd->tried_route);
+
 	if (!spd->tried_route) {
 		spd->tried_route = 1;
 		if (spd->route.len > 0) {
@@ -211,6 +215,9 @@ static ngx_int_t ngx_http_sticky_ups_get(ngx_peer_connection_t *pc, void *data)
 				/* if hashing, find the corresponding peer and use it ! */
 				for (i=0; i < conf->peers->number; i++) {
 					peer = &conf->peers->peer[i];
+					if (peer->down) {
+						continue;
+					}
 					if (ngx_strncmp(spd->route.data, peer->digest.data, peer->digest.len) != 0) {
 						continue;
 					}
@@ -240,7 +247,9 @@ static ngx_int_t ngx_http_sticky_ups_get(ngx_peer_connection_t *pc, void *data)
 	}
 
 	/* switch back to classic rr */
-	if ((i = ngx_http_upstream_get_round_robin_peer(pc, data)) != NGX_OK) {
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/ups_get] switch back to classic rr");
+	if ((i = ngx_http_upstream_get_round_robin_peer(pc, &spd->rrp)) != NGX_OK) {
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/ups_get] ngx_http_upstream_get_round_robin_peer returned %d", i);
 		return i;
 	}
 
