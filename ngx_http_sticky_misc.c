@@ -85,14 +85,15 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 			elt = part->elts;
 			i = 0;
 		}
-		// ... //
+		/* ... */
 		if (ngx_strncmp(elt->value.data, name->data, name->len) == 0) {
 			set_cookie = elt;
 			break;
 		}
 	}
 
-	if (set_cookie != NULL) { // found a Set-Cookie header with the same name: replace it
+	/* found a Set-Cookie header with the same name: replace it */
+	if (set_cookie != NULL) {
 		set_cookie->value.len = p - cookie;
 		set_cookie->value.data = cookie;
 		return NGX_OK;
