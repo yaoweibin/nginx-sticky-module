@@ -562,8 +562,19 @@ static char *ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 	sticky_conf->hmac_key = hmac_key;
 	sticky_conf->peers = NULL; /* ensure it's null before running */
 
-	/* configure the upstream to get back to this module */
 	upstream_conf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_upstream_module);
+
+	/* 
+	 * ensure another upstream module has not been already loaded
+	 * peer.init_upstream is set to null and the upstream module use RR if not set
+	 * But this check only works when the other module is declared before sticky
+	 */
+	if (upstream_conf->peer.init_upstream) {
+		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "You can't use sticky with another upstream module");
+		return NGX_CONF_ERROR;
+	}
+
+	/* configure the upstream to get back to this module */
 	upstream_conf->peer.init_upstream = ngx_http_init_upstream_sticky;
 
 	upstream_conf->flags = NGX_HTTP_UPSTREAM_CREATE
