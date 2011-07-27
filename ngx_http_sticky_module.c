@@ -257,14 +257,14 @@ static ngx_int_t ngx_http_get_sticky_peer(ngx_peer_connection_t *pc, void *data)
 	ngx_uint_t                    n, i;
 	ngx_http_upstream_rr_peer_t  *peer = NULL;
 
-	ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] get sticky peer, try: %ui", pc->tries);
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] get sticky peer, try: %ui", pc->tries);
 
 	/* TODO: cached */
 
 	/* has the sticky module already choosen a peer to connect to and is it a valid peer */
 	/* is there more than one peer (otherwise, no choices to make) */
 	if (iphp->selected_peer >= 0 && iphp->selected_peer < (ngx_int_t)iphp->rrp.peers->number && !iphp->rrp.peers->single) {
-		ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] let's try the selected peer (%i)", iphp->selected_peer);
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] let's try the selected peer (%i)", iphp->selected_peer);
 
 		n = iphp->selected_peer / (8 * sizeof(uintptr_t));
 		m = (uintptr_t) 1 << iphp->selected_peer % (8 * sizeof(uintptr_t));
@@ -296,7 +296,7 @@ static ngx_int_t ngx_http_get_sticky_peer(ngx_peer_connection_t *pc, void *data)
 
 	/* we have a valid peer, tell the upstream module to use it */
 	if (peer && selected_peer >= 0) {
-		ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] peer found at index %i", selected_peer);
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] peer found at index %i", selected_peer);
 		iphp->rrp.current = iphp->selected_peer;
 		pc->cached = 0;
 		pc->connection = NULL;
@@ -307,7 +307,7 @@ static ngx_int_t ngx_http_get_sticky_peer(ngx_peer_connection_t *pc, void *data)
 		iphp->rrp.tried[n] |= m;
 
 	} else {
-		ngx_log_debug1(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] no sticky peer selected, switch back to classic rr");
+		ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] no sticky peer selected, switch back to classic rr");
 		ngx_int_t ret = iphp->get_rr_peer(pc, &iphp->rrp);
 		if (ret != NGX_OK) {
 			ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] ngx_http_upstream_get_round_robin_peer returned %i", ret);
