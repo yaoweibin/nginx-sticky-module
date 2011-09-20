@@ -106,9 +106,6 @@ ngx_int_t ngx_http_init_upstream_sticky(ngx_conf_t *cf, ngx_http_upstream_srv_co
 		return NGX_ERROR;
 	}
 
-	/* tell the upstream module to call ngx_http_init_sticky_peer when it inits peer */
-	us->peer.init = ngx_http_init_sticky_peer;
-
 	/* calculate each peer digest once and save */
 	rr_peers = us->peer.data;
 
@@ -116,6 +113,9 @@ ngx_int_t ngx_http_init_upstream_sticky(ngx_conf_t *cf, ngx_http_upstream_srv_co
 	if (rr_peers->number <= 1 || rr_peers->single) {
 		return NGX_OK;
 	}
+
+	/* tell the upstream module to call ngx_http_init_sticky_peer when it inits peer */
+	us->peer.init = ngx_http_init_sticky_peer;
 
 	conf = ngx_http_conf_upstream_srv_conf(us, ngx_http_sticky_module);
 
