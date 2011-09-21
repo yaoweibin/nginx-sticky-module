@@ -17,10 +17,9 @@ Description:
 	Using a cookie to track the upstream server makes each browser unique.
 
 	When the sticky module can't apply, it switchs back to the classic Round Robin
-	Upstream.	Sticky module can't apply when :
-		- cookies are not supported by the browser
-		- a browser first connects
-		- the upstream server choosed by the sticky module is in error
+	Upstream or returns a "Bad Gateway" (depending on the no_fallback flag).
+	
+	Sticky module can't apply when cookies are not supported by the browser
 
 	* Sticky module is based on a "best effort" algorithm. Its aim is not to handle
 	* security somehow. It's been made to ensure that normal users are always
@@ -44,7 +43,7 @@ Usage
 		server 127.0.0.1:9002;
 	}
 
-	sticky [name=route] [domain=.foo.bar] [path=/] [expires=1h] [hash=index|md5|sha1];
+	sticky [name=route] [domain=.foo.bar] [path=/] [expires=1h] [hash=index|md5|sha1] [no_fallback];
 	  - name:    the name of the cookies used to track the persistant upstream srv
 	             default: route
 
@@ -55,7 +54,7 @@ Usage
 	             default: nothing. Let the browser handle this.
 
 	  - expires: the validity duration of the cookie
-	             refault: nothing. It's a session cookie.
+	             default: nothing. It's a session cookie.
 	             restriction: must be a duration greater than one second
 
 	  - hash:    the hash mechanism to encode upstream server. It cant' be used
@@ -78,6 +77,10 @@ Usage
 
 	  -hmac_key: the key to use with hmac. It's mandatory when hmac is set
 	             default: nothing.
+
+	  -no_fallback: when this flag is set, nginx will return a 502 (Bad Gateway or
+		              Proxy Error) if a request comes with a cookie and the
+		              corresponding backend is unavailable.
 
 Detail Mechanism
 	see docs/sticky.{vsd,pdf}	
