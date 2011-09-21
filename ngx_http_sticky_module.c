@@ -26,6 +26,7 @@ typedef struct {
 	ngx_str_t                     hmac_key;
 	ngx_http_sticky_misc_hash_pt  hash;
 	ngx_http_sticky_misc_hmac_pt  hmac;
+	ngx_uint_t                    no_fallback;
 	ngx_http_sticky_peer_t       *peers;
 } ngx_http_sticky_srv_conf_t;
 
@@ -36,6 +37,7 @@ typedef struct {
 	ngx_http_upstream_rr_peer_data_t   rrp;
 	ngx_event_get_peer_pt              get_rr_peer;
 	int                                selected_peer;
+	int                                no_fallback;
 	ngx_http_sticky_srv_conf_t        *sticky_conf;
 	ngx_http_request_t                *request;
 } ngx_http_sticky_peer_data_t;
@@ -185,6 +187,7 @@ static ngx_int_t ngx_http_init_sticky_peer(ngx_http_request_t *r, ngx_http_upstr
 	/* init the custom sticky struct */
 	iphp->get_rr_peer = ngx_http_upstream_get_round_robin_peer;
 	iphp->selected_peer = -1;
+	iphp->no_fallback = 0;
 	iphp->sticky_conf = ngx_http_conf_upstream_srv_conf(us, ngx_http_sticky_module);
 	iphp->request = r;
 
@@ -257,7 +260,7 @@ static ngx_int_t ngx_http_get_sticky_peer(ngx_peer_connection_t *pc, void *data)
 	ngx_uint_t                    n, i;
 	ngx_http_upstream_rr_peer_t  *peer = NULL;
 
-	ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] get sticky peer, try: %ui", pc->tries);
+	ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] get sticky peer, try: %ui, n_peers: %ui, no_fallback: %ui/%ui", pc->tries, iphp->rrp.peers->number, conf->no_fallback, iphp->no_fallback);
 
 	/* TODO: cached */
 
@@ -269,9 +272,33 @@ static ngx_int_t ngx_http_get_sticky_peer(ngx_peer_connection_t *pc, void *data)
 		n = iphp->selected_peer / (8 * sizeof(uintptr_t));
 		m = (uintptr_t) 1 << iphp->selected_peer % (8 * sizeof(uintptr_t));
 
-		/* has the peer already been tried ? */
+		/* has the peer not already been tried ? */
 		if (!(iphp->rrp.tried[n] & m)) {
 			peer = &iphp->rrp.peers->peer[iphp->selected_peer];
+
+			/* if the no_fallback flag is set */
+			if (conf->no_fallback) {
+
+				iphp->no_fallback = 1;
+
+				/* if peer is down */
+				if (peer->down) {
+					ngx_log_error(NGX_LOG_NOTICE, pc->log, 0, "[sticky/get_sticky_peer] the selected peer is down and no_fallback is flagged");
+					return NGX_BUSY;
+				}
+
+				/* if it's been ignored for long enought (fail_timeout), reset timeout */
+				/* do this check before testing peer->fails ! :) */
+				if (now - peer->accessed > peer->fail_timeout) {
+					peer->fails = 0;
+				}
+
+				/* if peer is failed */
+				if (peer->max_fails > 0 && peer->fails >= peer->max_fails) {
+					ngx_log_error(NGX_LOG_NOTICE, pc->log, 0, "[sticky/get_sticky_peer] the selected peer is maked as failed and no_fallback is flagged");
+					return NGX_BUSY;
+				}
+			}
 
 			/* ensure the peer is not marked as down */
 			if (!peer->down) {
@@ -297,6 +324,7 @@ static ngx_int_t ngx_http_get_sticky_peer(ngx_peer_connection_t *pc, void *data)
 	/* we have a valid peer, tell the upstream module to use it */
 	if (peer && selected_peer >= 0) {
 		ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] peer found at index %i", selected_peer);
+
 		iphp->rrp.current = iphp->selected_peer;
 		pc->cached = 0;
 		pc->connection = NULL;
@@ -308,6 +336,12 @@ static ngx_int_t ngx_http_get_sticky_peer(ngx_peer_connection_t *pc, void *data)
 
 	} else {
 		ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] no sticky peer selected, switch back to classic rr");
+
+		if (iphp->no_fallback) {
+			ngx_log_error(NGX_LOG_NOTICE, pc->log, 0, "[sticky/get_sticky_peer] No fallback in action !");
+			return NGX_BUSY;
+		}
+
 		ngx_int_t ret = iphp->get_rr_peer(pc, &iphp->rrp);
 		if (ret != NGX_OK) {
 			ngx_log_debug(NGX_LOG_DEBUG_HTTP, pc->log, 0, "[sticky/get_sticky_peer] ngx_http_upstream_get_round_robin_peer returned %i", ret);
@@ -364,6 +398,7 @@ static char *ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 	time_t expires = NGX_CONF_UNSET;
 	ngx_http_sticky_misc_hash_pt hash = NGX_CONF_UNSET_PTR;
 	ngx_http_sticky_misc_hmac_pt hmac = NULL;
+	ngx_uint_t no_fallback = 0;
 
 	/* parse all elements */
 	for (i = 1; i < cf->args->nelts; i++) {
@@ -525,6 +560,12 @@ static char *ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 			continue;
 		}
 
+		/* is "no_fallback" flag present ? */
+		if (ngx_strncmp(value[i].data, "no_fallback", sizeof("no_fallback") - 1) == 0 ) {
+			no_fallback = 1;
+			continue;
+		}
+
 		ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid arguement (%V)", &value[i]);
 		return NGX_CONF_ERROR;
 	}
@@ -560,6 +601,7 @@ static char *ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 	sticky_conf->hash = hash;
 	sticky_conf->hmac = hmac;
 	sticky_conf->hmac_key = hmac_key;
+	sticky_conf->no_fallback = no_fallback;
 	sticky_conf->peers = NULL; /* ensure it's null before running */
 
 	upstream_conf = ngx_http_conf_get_module_srv_conf(cf, ngx_http_upstream_module);
