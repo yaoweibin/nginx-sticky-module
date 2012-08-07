@@ -12,18 +12,22 @@
 
 #include "ngx_http_sticky_misc.h"
 
-#ifndef ngx_str_set
-	#define ngx_str_set(str, text) (str)->len = sizeof(text) - 1; (str)->data = (u_char *) text
+#ifndef ngx_str_set                  
+#define ngx_str_set(str, text)         \
+    (str)->len = sizeof(text) - 1;     \
+    (str)->data = (u_char *) text
 #endif
 
-ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name, ngx_str_t *value, ngx_str_t *domain, ngx_str_t *path, time_t expires)
+ngx_int_t
+ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name,
+    ngx_str_t *value, ngx_str_t *domain, ngx_str_t *path, time_t expires)
 {
-	u_char  *cookie, *p;
-	size_t  len;
-	ngx_table_elt_t *set_cookie, *elt;
-	ngx_str_t remove;
+	u_char          *cookie, *p;
+	size_t           len;
+	ngx_str_t        remove;
+	ngx_uint_t       i;
 	ngx_list_part_t *part;
-	ngx_uint_t i;
+	ngx_table_elt_t *set_cookie, *elt;
 
 	if (value == NULL) {
 		ngx_str_set(&remove, "_remove_");
@@ -85,6 +89,7 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 			elt = part->elts;
 			i = 0;
 		}
+
 		/* ... */
 		if (ngx_strncmp(elt->value.data, name->data, name->len) == 0) {
 			set_cookie = elt;
@@ -103,6 +108,7 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 	if (set_cookie == NULL) {
 		return NGX_ERROR;
 	}
+
 	set_cookie->hash = 1;
 	ngx_str_set(&set_cookie->key, "Set-Cookie");
 	set_cookie->value.len = p - cookie;
@@ -111,7 +117,10 @@ ngx_int_t ngx_http_sticky_misc_set_cookie(ngx_http_request_t *r, ngx_str_t *name
 	return NGX_OK;
 }
 
-ngx_int_t ngx_http_sticky_misc_md5(ngx_pool_t *pool, void *in, size_t len, ngx_str_t *digest)
+
+ngx_int_t
+ngx_http_sticky_misc_md5(ngx_pool_t *pool, void *in, size_t len,
+    ngx_str_t *digest)
 {
 	ngx_md5_t md5;
 	u_char hash[MD5_DIGEST_LENGTH];
@@ -130,7 +139,10 @@ ngx_int_t ngx_http_sticky_misc_md5(ngx_pool_t *pool, void *in, size_t len, ngx_s
 	return NGX_OK;
 }
 
-ngx_int_t ngx_http_sticky_misc_sha1(ngx_pool_t *pool, void *in, size_t len, ngx_str_t *digest)
+
+ngx_int_t
+ngx_http_sticky_misc_sha1(ngx_pool_t *pool, void *in, size_t len,
+    ngx_str_t *digest)
 {
 	ngx_sha1_t sha1;
 	u_char hash[SHA_DIGEST_LENGTH];
@@ -149,7 +161,10 @@ ngx_int_t ngx_http_sticky_misc_sha1(ngx_pool_t *pool, void *in, size_t len, ngx_
 	return NGX_OK;
 }
 
-ngx_int_t ngx_http_sticky_misc_hmac_md5(ngx_pool_t *pool, void *in, size_t len, ngx_str_t *key, ngx_str_t *digest)
+
+ngx_int_t
+ngx_http_sticky_misc_hmac_md5(ngx_pool_t *pool, void *in, size_t len,
+    ngx_str_t *key, ngx_str_t *digest)
 {
 	u_char hash[MD5_DIGEST_LENGTH];
 	u_char k[MD5_CBLOCK];
@@ -197,7 +212,10 @@ ngx_int_t ngx_http_sticky_misc_hmac_md5(ngx_pool_t *pool, void *in, size_t len, 
 	return NGX_OK;
 }
 
-ngx_int_t ngx_http_sticky_misc_hmac_sha1(ngx_pool_t *pool, void *in, size_t len, ngx_str_t *key, ngx_str_t *digest)
+
+ngx_int_t
+ngx_http_sticky_misc_hmac_sha1(ngx_pool_t *pool, void *in,
+    size_t len, ngx_str_t *key, ngx_str_t *digest)
 {
 	u_char hash[SHA_DIGEST_LENGTH];
 	u_char k[SHA_CBLOCK];
