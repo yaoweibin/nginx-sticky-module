@@ -43,7 +43,7 @@ Usage
 		server 127.0.0.1:9002;
 	}
 
-	sticky [name=route] [domain=.foo.bar] [path=/] [expires=1h] [hash=index|md5|sha1] [no_fallback];
+	sticky [name=route] [domain=.foo.bar] [path=/] [expires=1h] [hash=index|md5|sha1] [hmac hmac_key=private_key] [no_fallback];
 	  - name:    the name of the cookies used to track the persistant upstream srv
 	             default: route
 
