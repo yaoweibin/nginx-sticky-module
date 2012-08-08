@@ -505,92 +505,53 @@ ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     /* parse all elements */
     for (i = 1; i < cf->args->nelts; i++) {
 
-        /* is "name=" is starting the argument ? */
-        if ((u_char *)ngx_strstr(value[i].data, "name=") == value[i].data) {
-
-            /* do we have at least on char after "name=" ? */
-            if (value[i].len <= sizeof("name=") - 1) {
-                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                   "a value must be provided to \"name=\"");
-                return NGX_CONF_ERROR;
-            }
+        if (ngx_strncmp(value[i].data, "name=", 5) == 0) {
 
             /* save what's after "name=" */
-            name.len = value[i].len - ngx_strlen("name=");
-            name.data = (u_char *)(value[i].data + sizeof("name=") - 1);
+            name.len = value[i].len - 5;
+            name.data = value[i].data + 5;
             continue;
-        }
+        } 
 
-        /* is "domain=" is starting the argument ? */
-        if ((u_char *)ngx_strstr(value[i].data, "domain=") == value[i].data) {
-
-            /* do we have at least on char after "domain=" ? */
-            if (value[i].len <= ngx_strlen("domain=")) {
-                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                   "a value must be provided to \"domain=\"");
-                return NGX_CONF_ERROR;
-            }
+        if (ngx_strncmp(value[i].data, "domain=", 7) == 0) {
 
             /* save what's after "domain=" */
-            domain.len = value[i].len - ngx_strlen("domain=");
-            domain.data = (u_char *)(value[i].data + sizeof("domain=") - 1);
+            domain.len = value[i].len - 7;
+            domain.data = value[i].data + 7;
             continue;
         }
 
-        /* is "path=" is starting the argument ? */
-        if ((u_char *)ngx_strstr(value[i].data, "path=") == value[i].data) {
+        if (ngx_strncmp(value[i].data, "path=", 5) == 0) {
 
-            /* do we have at least on char after "path=" ? */
-            if (value[i].len <= ngx_strlen("path=")) {
-                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                   "a value must be provided to \"path=\"");
-                return NGX_CONF_ERROR;
-            }
-
-            /* save what's after "domain=" */
-            path.len = value[i].len - ngx_strlen("path=");
-            path.data = (u_char *)(value[i].data + sizeof("path=") - 1);
-            continue;
+            /* save what's after "path=" */
+            path.len = value[i].len - 5;
+            path.data = value[i].data + 5;
         }
 
-        /* is "expires=" is starting the argument ? */
-        if ((u_char *)ngx_strstr(value[i].data, "expires=") == value[i].data) {
-
-            /* do we have at least on char after "expires=" ? */
-            if (value[i].len <= sizeof("expires=") - 1) {
-                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                   "a value must be provided to \"expires=\"");
-                return NGX_CONF_ERROR;
-            }
+        if (ngx_strncmp(value[i].data, "expires=", 8) == 0) {
 
             /* extract value */
-            tmp.len =  value[i].len - ngx_strlen("expires=");
-            tmp.data = (u_char *)(value[i].data + sizeof("expires=") - 1);
+            tmp.len =  value[i].len - 8;
+            tmp.data = value[i].data + 8;
 
             /* convert to time, save and validate */
             expires = ngx_parse_time(&tmp, 1);
             if (expires == NGX_ERROR || expires < 1) {
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                   "invalid value for \"expires=\"");
+                                   "invalid value \"%V\"", &value[i]);
                 return NGX_CONF_ERROR;
             }
+
             continue;
         }
 
         /* is "hash=" is starting the argument ? */
-        if ((u_char *)ngx_strstr(value[i].data, "hash=") == value[i].data) {
+        if (ngx_strncmp(value[i].data, "hash=", 5) == 0) {
 
             /* only hash or hmac can be used, not both */
             if (hmac) {
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                   "please choose between \"hash=\" and \"hmac=\"");
-                return NGX_CONF_ERROR;
-            }
-
-            /* do we have at least on char after "hash=" ? */
-            if (value[i].len <= sizeof("hash=") - 1) {
-                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                   "a value must be provided to \"hash=\"");
+                    "please choose between \"hash=\" and \"hmac=\"");
                 return NGX_CONF_ERROR;
             }
 
@@ -622,26 +583,18 @@ ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             return NGX_CONF_ERROR;
         }
 
-        /* is "hmac=" is starting the argument ? */
-        if ((u_char *)ngx_strstr(value[i].data, "hmac=") == value[i].data) {
+        if (ngx_strncmp(value[i].data, "hmac=", 5) == 0) {
 
             /* only hash or hmac can be used, not both */
             if (hash != NGX_CONF_UNSET_PTR) {
                 ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                   "please choose between \"hash=\" and \"hmac=\"");
-                return NGX_CONF_ERROR;
-            }
-
-            /* do we have at least on char after "hmac=" ? */
-            if (value[i].len <= sizeof("hmac=") - 1) {
-                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                   "a value must be provided to \"hmac=\"");
+                    "please choose between \"hash=\" and \"hmac=\"");
                 return NGX_CONF_ERROR;
             }
 
             /* extract value */
-            tmp.len =  value[i].len - ngx_strlen("hmac=");
-            tmp.data = (u_char *)(value[i].data + sizeof("hmac=") - 1);
+            tmp.len =  value[i].len - 5;
+            tmp.data = value[i].data + 5;
 
             /* is hmac=md5 ? */
             if (ngx_strncmp(tmp.data, "md5", sizeof("md5") - 1) == 0 ) {
@@ -660,19 +613,11 @@ ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             return NGX_CONF_ERROR;
         }
 
-        /* is "hmac_key=" is starting the argument ? */
-        if ((u_char *)ngx_strstr(value[i].data, "hmac_key=") == value[i].data) {
-
-            /* do we have at least on char after "hmac_key=" ? */
-            if (value[i].len <= ngx_strlen("hmac_key=")) {
-                ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                                   "a value must be provided to \"hmac_key=\"");
-                return NGX_CONF_ERROR;
-            }
+        if (ngx_strncmp(value[i].data, "hmac_key=", 9) == 0) {
 
             /* save what's after "hmac_key=" */
-            hmac_key.len = value[i].len - ngx_strlen("hmac_key=");
-            hmac_key.data = (u_char *)(value[i].data + sizeof("hmac_key=") - 1);
+            hmac_key.len = value[i].len - 9;
+            hmac_key.data = value[i].data + 9;
             continue;
         }
 
@@ -697,7 +642,7 @@ ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     if (hmac_key.len > 0 && hash != NGX_CONF_UNSET_PTR) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                            "\"hmac_key=\" is meaningless when "
-                           "\"hmac\" is used. Please remove it.");
+                           "\"hash\" is used. Please remove it.");
         return NGX_CONF_ERROR;
     }
 
@@ -736,7 +681,8 @@ ngx_http_sticky_set(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
      */
     if (upstream_conf->peer.init_upstream) {
 
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "You can't use sticky with another upstream module");
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                           "You can't use sticky with another upstream module");
 
         return NGX_CONF_ERROR;
     }
